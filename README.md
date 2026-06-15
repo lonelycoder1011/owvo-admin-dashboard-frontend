@@ -13,8 +13,8 @@ npm run dev
 Update `.env.local` with the backend URLs:
 
 ```env
-NEXT_PUBLIC_API_BASE_URL=https://your-backend-url.com/api/v1
-NEXT_PUBLIC_SOCKET_URL=https://your-backend-url.com
+NEXT_PUBLIC_API_BASE_URL=https://owvo-backend.onrender.com/api/v1
+NEXT_PUBLIC_SOCKET_URL=https://owvo-backend.onrender.com
 ```
 
 ## Scripts

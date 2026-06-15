@@ -5,7 +5,7 @@ const REFRESH_TOKEN_KEY = "owvo_dashboard_refresh_token";
 const USER_KEY = "owvo_dashboard_user";
 
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5005/api/v1";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://owvo-backend.onrender.com/api/v1";
 
 export const SOCKET_URL =
   process.env.NEXT_PUBLIC_SOCKET_URL ?? API_BASE_URL.replace(/\/api\/v1\/?$/, "");
