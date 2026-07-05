@@ -7,6 +7,7 @@ import {
   AdminPayout,
   AdminReport,
   AdminService,
+  AdminServicesPricing,
   AdminUser,
   createAdminPayout,
   createStaffAccount,
@@ -27,6 +28,7 @@ import {
   updateAdminReportStatus,
   updateAdminCatalogService,
   updateAdminProviderService,
+  updateProviderDailyWashLimit,
   updateDashboardSettings,
   updateStaffAccount,
 } from "@/lib/admin-api";
@@ -41,6 +43,8 @@ import {
   Bell,
   BadgePoundSterling,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   Loader2,
   Save,
@@ -170,6 +174,19 @@ function RatingSummary({ average, count }: { average?: number; count?: number })
     <div className="rating-summary">
       <strong>{Number(average || 0).toFixed(1)}</strong>
       <span>{count || 0} ratings</span>
+    </div>
+  );
+}
+
+function CompletedJobsSummary({ jobs }: { jobs?: AdminUser["completedJobs"] }) {
+  const values = jobs || { today: 0, week: 0, yearly: 0, allTime: 0 };
+
+  return (
+    <div className="jobs-summary">
+      <strong>{values.allTime} all time</strong>
+      <span>Today {values.today}</span>
+      <span>Week {values.week}</span>
+      <span>Year {values.yearly}</span>
     </div>
   );
 }
@@ -994,12 +1011,30 @@ function ActivityLogDownloadButton({ logs, rangeLabel }: { logs: ActivityLog[]; 
 }
 
 export function WashersPageContent() {
+  const queryClient = useQueryClient();
   const dateRange = useDashboardDateRange();
+  const user = useDashboardUser();
   const washersQuery = useQuery({
     queryKey: ["washers", dateRange.queryKey],
     queryFn: () => getWashers(dateRange.query),
+    refetchInterval: 30000,
   });
   const washers = washersQuery.data || [];
+
+  useEffect(() => {
+    const socket = io(SOCKET_URL, {
+      query: user?._id ? { userId: user._id } : undefined,
+      transports: ["websocket"],
+    });
+    const refreshWashers = () => queryClient.invalidateQueries({ queryKey: ["washers"] });
+    socket.on("admin_booking_created", refreshWashers);
+    socket.on("admin_booking_status_updated", refreshWashers);
+    return () => {
+      socket.off("admin_booking_created", refreshWashers);
+      socket.off("admin_booking_status_updated", refreshWashers);
+      socket.disconnect();
+    };
+  }, [queryClient, user?._id]);
 
   return (
     <section className="data-page">
@@ -1017,6 +1052,7 @@ export function WashersPageContent() {
               <th>Status</th>
               <th>Verification</th>
               <th>Rating</th>
+              <th>Completed Jobs</th>
               <th>Service Area</th>
             </tr>
           </thead>
@@ -1041,6 +1077,9 @@ export function WashersPageContent() {
                     average={washer.customerRatingAverage}
                     count={washer.customerRatingCount}
                   />
+                </td>
+                <td>
+                  <CompletedJobsSummary jobs={washer.completedJobs} />
                 </td>
                 <td>{washer.serviceArea || "Not set"}</td>
               </tr>
@@ -1492,6 +1531,105 @@ function CatalogServiceRow({ service }: { service: AdminService }) {
   );
 }
 
+function PlatformDailyLimitControl({
+  value,
+  isPending,
+  onSave,
+}: {
+  value: number;
+  isPending: boolean;
+  onSave: (dailyWashLimitMax: number) => void;
+}) {
+  const currentValue = value || 7;
+  const [draft, setDraft] = useState(String(currentValue));
+
+  useEffect(() => {
+    setDraft(String(currentValue));
+  }, [currentValue]);
+
+  const parsed = Number(draft);
+  const isValid = Number.isInteger(parsed) && parsed >= 1 && parsed <= 50;
+  const isDirty = isValid && parsed !== currentValue;
+
+  return (
+    <form
+      className="daily-limit-default-panel"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (isValid) onSave(parsed);
+      }}
+    >
+      <label>
+        Platform Daily Wash Limit
+        <input
+          inputMode="numeric"
+          max={50}
+          min={1}
+          name="platformDailyWashLimitMax"
+          onChange={(event) => setDraft(event.target.value)}
+          type="number"
+          value={draft}
+        />
+      </label>
+      <button className="approve-action" disabled={!isDirty || isPending} type="submit">
+        <SlidersHorizontal size={15} />
+        Save Default
+      </button>
+      <span>Providers without a custom limit use {currentValue} washes per day.</span>
+    </form>
+  );
+}
+
+function ProviderDailyLimitControl({
+  item,
+  isPending,
+  onSave,
+}: {
+  item: AdminServicesPricing["providerSummaries"][number];
+  isPending: boolean;
+  onSave: (providerId: string, dailyWashLimitMax: number) => void;
+}) {
+  const limit = item.dailyWashLimit;
+  const currentMax = limit.max || 7;
+  const [value, setValue] = useState(String(currentMax));
+
+  useEffect(() => {
+    setValue(String(currentMax));
+  }, [currentMax]);
+
+  const parsed = Number(value);
+  const isValid = Number.isInteger(parsed) && parsed >= 1 && parsed <= 50;
+  const isDirty = isValid && parsed !== currentMax;
+
+  return (
+    <div className="daily-limit-control">
+      <div className="daily-limit-value">
+        <strong>{limit.remaining}/{currentMax}</strong>
+        <span>{limit.customMax ? "Custom provider limit" : `Platform default ${limit.platformMax}`}</span>
+      </div>
+      <input
+        aria-label={`Daily wash limit for ${item.provider.name || item.provider.email || "provider"}`}
+        className="table-input numeric-table-input"
+        inputMode="numeric"
+        max={50}
+        min={1}
+        onChange={(event) => setValue(event.target.value)}
+        title="Edit this provider's daily wash limit"
+        type="number"
+        value={value}
+      />
+      <button
+        className="mini-text-button"
+        disabled={!isValid || !isDirty || isPending}
+        onClick={() => onSave(item.provider._id, parsed)}
+        type="button"
+      >
+        <Save size={15} />
+        Save
+      </button>
+    </div>
+  );
+}
 function getProviderFromService(service: AdminService) {
   return typeof service.provider === "object" && service.provider !== null
     ? service.provider
@@ -1500,6 +1638,7 @@ function getProviderFromService(service: AdminService) {
 
 export function ServicesPricingPageContent() {
   const queryClient = useQueryClient();
+  const user = useDashboardUser();
   const servicesQuery = useQuery({
     queryKey: ["admin-services-pricing"],
     queryFn: getAdminServicesPricing,
@@ -1516,6 +1655,45 @@ export function ServicesPricingPageContent() {
     }) => updateAdminProviderService(providerId, serviceId, { isActive }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-services-pricing"] }),
   });
+  const updateProviderDailyLimitMutation = useMutation({
+    mutationFn: ({
+      providerId,
+      dailyWashLimitMax,
+    }: {
+      providerId: string;
+      dailyWashLimitMax: number;
+    }) => updateProviderDailyWashLimit(providerId, { dailyWashLimitMax }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-services-pricing"] }),
+  });
+  const updatePlatformDailyLimitMutation = useMutation({
+    mutationFn: (dailyWashLimitMax: number) => updateDashboardSettings({ dailyWashLimitMax }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-services-pricing"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-settings"] });
+    },
+  });
+
+  useEffect(() => {
+    const socket = io(SOCKET_URL, {
+      query: user?._id ? { userId: user._id } : undefined,
+      transports: ["websocket"],
+    });
+    const refreshServicesPricing = () => queryClient.invalidateQueries({ queryKey: ["admin-services-pricing"] });
+
+    socket.on("admin_services_pricing_updated", refreshServicesPricing);
+    socket.on("admin_settings_updated", refreshServicesPricing);
+    socket.on("admin_booking_created", refreshServicesPricing);
+    socket.on("admin_booking_status_updated", refreshServicesPricing);
+
+    return () => {
+      socket.off("admin_services_pricing_updated", refreshServicesPricing);
+      socket.off("admin_settings_updated", refreshServicesPricing);
+      socket.off("admin_booking_created", refreshServicesPricing);
+      socket.off("admin_booking_status_updated", refreshServicesPricing);
+      socket.disconnect();
+    };
+  }, [queryClient, user?._id]);
+
   const data = servicesQuery.data;
   const activeProviderServices = data?.providerServices.filter((service) => service.isActive).length || 0;
   const averageServices =
@@ -1529,7 +1707,7 @@ export function ServicesPricingPageContent() {
       <div className="data-page-header">
         <div>
           <h1>Services & Pricing</h1>
-          <p>Platform-controlled service names, prices, and provider service availability.</p>
+          <p>Platform-controlled service names, prices, provider availability, and daily wash limits.</p>
         </div>
       </div>
       <div className="summary-grid">
@@ -1550,6 +1728,17 @@ export function ServicesPricingPageContent() {
           <strong>{averageServices.toFixed(1)}</strong>
         </article>
       </div>
+      <PlatformDailyLimitControl
+        isPending={updatePlatformDailyLimitMutation.isPending}
+        onSave={(dailyWashLimitMax) => updatePlatformDailyLimitMutation.mutate(dailyWashLimitMax)}
+        value={data?.platformSettings?.dailyWashLimitMax || 7}
+      />
+      {updatePlatformDailyLimitMutation.error ? (
+        <p className="form-error">{getApiErrorMessage(updatePlatformDailyLimitMutation.error)}</p>
+      ) : null}
+      {updateProviderDailyLimitMutation.error ? (
+        <p className="form-error">{getApiErrorMessage(updateProviderDailyLimitMutation.error)}</p>
+      ) : null}
       <TableShell>
         <table className="admin-table service-pricing-table">
           <thead>
@@ -1580,6 +1769,7 @@ export function ServicesPricingPageContent() {
                 <th>Service Area</th>
                 <th>Active Services</th>
                 <th>Total Services</th>
+                <th>Daily Wash Limit</th>
               </tr>
             </thead>
             <tbody>
@@ -1591,6 +1781,15 @@ export function ServicesPricingPageContent() {
                   <td>{item.provider.serviceArea || "Not set"}</td>
                   <td>{item.counts.active}</td>
                   <td>{item.counts.total}</td>
+                  <td>
+                    <ProviderDailyLimitControl
+                      isPending={updateProviderDailyLimitMutation.isPending}
+                      item={item}
+                      onSave={(providerId, dailyWashLimitMax) =>
+                        updateProviderDailyLimitMutation.mutate({ providerId, dailyWashLimitMax })
+                      }
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1851,6 +2050,7 @@ export function StaffManagementPageContent() {
   const queryClient = useQueryClient();
   const dateRange = useDashboardDateRange();
   const [menus, setMenus] = useState<string[]>(["bookings"]);
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
   const [editingStaff, setEditingStaff] = useState<AdminUser | null>(null);
   const staffQuery = useQuery({
     queryKey: ["staff-accounts", dateRange.queryKey],
@@ -1901,7 +2101,16 @@ export function StaffManagementPageContent() {
         </label>
         <label>
           Password
-          <input name="password" required type="password" />
+          <span className="password-input-shell">
+            <input name="password" required type={showStaffPassword ? "text" : "password"} />
+            <button
+              aria-label={showStaffPassword ? "Hide password" : "Show password"}
+              onClick={() => setShowStaffPassword((value) => !value)}
+              type="button"
+            >
+              {showStaffPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </span>
         </label>
         <div className="permission-grid">
           {menuOptions.map((menu) => (
@@ -2076,6 +2285,7 @@ export function SettingsPageContent() {
       updateDashboardSettings({
         commissionRate: Number(formData.get("commissionRate")) / 100,
         providerVerificationRequired: formData.get("providerVerificationRequired") === "on",
+        dailyWashLimitMax: Number(formData.get("dailyWashLimitMax") || 7),
         autoPayoutEnabled: formData.get("autoPayoutEnabled") === "on",
         nextPayoutDay: String(formData.get("nextPayoutDay") || "Friday"),
         supportEmail: String(formData.get("supportEmail") || ""),
@@ -2123,6 +2333,10 @@ export function SettingsPageContent() {
         <label>
           OWVO Commission %
           <input defaultValue={settings ? settings.commissionRate * 100 : 25} name="commissionRate" type="number" />
+        </label>
+        <label>
+          Provider daily wash limit
+          <input defaultValue={settings?.dailyWashLimitMax || 7} min={1} max={50} name="dailyWashLimitMax" type="number" />
         </label>
         <label>
           Next payout day

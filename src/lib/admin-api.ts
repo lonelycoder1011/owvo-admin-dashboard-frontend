@@ -111,6 +111,12 @@ export type ProviderVerification = {
   insurance?: {
     document?: { url?: string };
   };
+  publicLiabilityInsurance?: {
+    document?: { url?: string };
+  };
+  drivewayPhoto?: {
+    document?: { url?: string };
+  };
   adminVerification?: {
     status: "not_submitted" | "pending" | "approved" | "rejected";
     rejectionReason?: string;
@@ -128,9 +134,17 @@ export type AdminUser = Omit<DashboardUser, "role"> & {
   photo?: { public_id?: string; url?: string };
   isOnline?: boolean;
   isBusy?: boolean;
+  dailyWashLimit?: number;
+  dailyWashLimitMax?: number;
   serviceArea?: string;
   customerRatingAverage?: number;
   customerRatingCount?: number;
+  completedJobs?: {
+    today: number;
+    week: number;
+    yearly: number;
+    allTime: number;
+  };
   recentReviews?: Array<{
     _id: string;
     rating: number;
@@ -277,12 +291,22 @@ export type AdminService = {
 
 export type AdminServicesPricing = {
   catalogServices: AdminService[];
+  platformSettings: {
+    dailyWashLimitMax: number;
+  };
   providerSummaries: Array<{
     provider: AdminUser;
     counts: {
       total: number;
       active: number;
       inactive: number;
+    };
+    dailyWashLimit: {
+      remaining: number;
+      max: number;
+      customMax: number | null;
+      platformMax: number;
+      completedToday?: number | null;
     };
   }>;
   providerServices: AdminService[];
@@ -312,6 +336,7 @@ export type PlatformSettings = {
   _id: string;
   commissionRate: number;
   providerVerificationRequired: boolean;
+  dailyWashLimitMax: number;
   autoPayoutEnabled: boolean;
   nextPayoutDay: string;
   supportEmail: string;
@@ -578,6 +603,16 @@ export async function updateAdminProviderService(
 ) {
   const response = await api.patch<ApiEnvelope<AdminService>>(
     `/admin/services-pricing/providers/${providerId}/services/${serviceId}`,
+    payload
+  );
+  return response.data.data;
+}
+export async function updateProviderDailyWashLimit(
+  providerId: string,
+  payload: { dailyWashLimitMax: number }
+) {
+  const response = await api.patch<ApiEnvelope<{ provider: AdminUser; dailyWashLimit: AdminServicesPricing["providerSummaries"][number]["dailyWashLimit"] }>>(
+    `/admin/services-pricing/providers/${providerId}/daily-wash-limit`,
     payload
   );
   return response.data.data;

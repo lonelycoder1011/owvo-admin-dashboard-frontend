@@ -1415,17 +1415,20 @@ a {
 }
 
 .rating-summary,
-.review-summary {
+.review-summary,
+.jobs-summary {
   display: grid;
   gap: 2px;
 }
 
-.rating-summary strong {
+.rating-summary strong,
+.jobs-summary strong {
   color: var(--text);
   font-weight: 900;
 }
 
 .rating-summary span,
+.jobs-summary span,
 .review-snippet {
   color: var(--muted);
   display: block;
@@ -1464,6 +1467,11 @@ a {
   color: #c58b00;
 }
 
+.mini-text-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .table-input,
 .table-select {
   background: #ffffff;
@@ -1484,6 +1492,71 @@ a {
 .numeric-table-input {
   max-width: 94px;
   text-align: right;
+}
+
+.daily-limit-default-panel {
+  align-items: end;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 280px) auto minmax(180px, 1fr);
+  padding: 14px 17px;
+}
+
+.daily-limit-default-panel label {
+  color: #111827;
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.daily-limit-default-panel input {
+  border: 1px solid #d9dee7;
+  border-radius: 7px;
+  color: #111827;
+  min-height: 40px;
+  padding: 0 11px;
+}
+
+.daily-limit-default-panel input:focus {
+  border-color: var(--owvo-yellow);
+  outline: none;
+}
+
+.daily-limit-default-panel span {
+  align-self: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.daily-limit-control {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(86px, 1fr) 74px auto;
+  min-width: 250px;
+}
+
+.daily-limit-value {
+  display: grid;
+  gap: 2px;
+}
+
+.daily-limit-value strong {
+  color: var(--text);
+  font-weight: 900;
+}
+
+.daily-limit-value span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .service-pricing-table th:first-child,
@@ -1562,6 +1635,34 @@ a {
   border-radius: 7px;
   min-height: 40px;
   padding: 0 10px;
+}
+
+.password-input-shell {
+  align-items: center;
+  display: grid;
+  grid-template-columns: 1fr 38px;
+  position: relative;
+}
+
+.password-input-shell input {
+  padding-right: 42px;
+}
+
+.password-input-shell button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  margin-left: -38px;
+  width: 38px;
+}
+
+.password-input-shell button:hover {
+  color: var(--text);
 }
 
 .permission-grid {
@@ -1888,6 +1989,7 @@ a {
   .document-grid,
   .bank-details-review,
   .summary-grid,
+  .daily-limit-default-panel,
   .inline-form-card,
   .staff-form,
   .settings-form,

@@ -43,22 +43,23 @@ function ChecklistItem({ done, label }: { done: boolean; label: string }) {
 }
 
 function DocumentLink({ label, url }: { label: string; url?: string }) {
+  const resolvedUrl = resolvePhotoUrl(url);
+
   return (
     <a
-      className={url ? "doc-link ready" : "doc-link"}
-      href={url || "#"}
+      className={resolvedUrl ? "doc-link ready" : "doc-link"}
+      href={resolvedUrl || "#"}
       onClick={(event) => {
-        if (!url) event.preventDefault();
+        if (!resolvedUrl) event.preventDefault();
       }}
       rel="noreferrer"
       target="_blank"
     >
       {label}
-      <span>{url ? "Open" : "Missing"}</span>
+      <span>{resolvedUrl ? "Open" : "Missing"}</span>
     </a>
   );
 }
-
 function formatBankDate(value?: string) {
   if (!value) return "Not added";
   const date = new Date(value);
@@ -126,6 +127,9 @@ function ProviderCard({
       bank.accountNumber &&
       bank.sortCode
   );
+  const publicLiabilityInsuranceUrl =
+    provider.publicLiabilityInsurance?.document?.url || provider.insurance?.document?.url;
+  const drivewayPhotoUrl = provider.drivewayPhoto?.document?.url;
 
   return (
     <article className="verification-card">
@@ -176,6 +180,8 @@ function ProviderCard({
           done={hasUrl(provider.identityVerification?.passportOrDrivingLicenseFile)}
           label="Passport / licence"
         />
+        <ChecklistItem done={Boolean(publicLiabilityInsuranceUrl)} label="Public liability insurance" />
+        <ChecklistItem done={Boolean(drivewayPhotoUrl)} label="Driveway photo" />
         <ChecklistItem done={hasBankDetails} label="Bank details" />
       </div>
       <div className="document-grid">
@@ -184,6 +190,8 @@ function ProviderCard({
           label="Passport / Licence"
           url={provider.identityVerification?.passportOrDrivingLicenseFile?.url}
         />
+        <DocumentLink label="Public Liability Insurance" url={publicLiabilityInsuranceUrl} />
+        <DocumentLink label="Driveway Photo" url={drivewayPhotoUrl} />
         <button
           className={hasBankDetails ? "doc-link ready doc-link-button" : "doc-link doc-link-button"}
           onClick={() => setShowBankDetails((value) => !value)}
