@@ -259,6 +259,21 @@ export type AdminPayouts = {
   };
 };
 
+
+export type AdminDataRequest = {
+  _id: string;
+  requesterRole: "user" | "provider";
+  status: "pending" | "approved" | "rejected";
+  requestNote?: string;
+  adminNote?: string;
+  exportData?: Record<string, unknown> | null;
+  exportGeneratedAt?: string;
+  reviewedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  user?: AdminUser;
+  reviewedBy?: AdminUser;
+};
 export type AdminReport = {
   _id: string;
   reporter?: AdminUser;
@@ -580,6 +595,25 @@ export async function updateAdminReportStatus(
   return response.data.data;
 }
 
+
+export async function getAdminDataRequests(status = "all", dateRange?: DateRangeQuery) {
+  const query = buildQuery({ ...dateRange, status: status === "all" ? undefined : status });
+  const response = await api.get<ApiEnvelope<AdminDataRequest[]>>(
+    `/admin/data-requests${query}`
+  );
+  return response.data.data;
+}
+
+export async function updateAdminDataRequest(
+  requestId: string,
+  payload: { status: "approved" | "rejected"; adminNote?: string }
+) {
+  const response = await api.patch<ApiEnvelope<AdminDataRequest>>(
+    `/admin/data-requests/${requestId}`,
+    payload
+  );
+  return response.data.data;
+}
 export async function getAdminServicesPricing() {
   const response = await api.get<ApiEnvelope<AdminServicesPricing>>("/admin/services-pricing");
   return response.data.data;
@@ -689,3 +723,4 @@ export async function createAdminCommissionWithdrawal(payload: {
   );
   return response.data.data;
 }
+

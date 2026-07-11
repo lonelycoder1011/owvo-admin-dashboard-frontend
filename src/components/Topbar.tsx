@@ -6,10 +6,11 @@ import { useDashboardUser } from "@/hooks/useDashboardUser";
 import { useDashboardDateRange, type DashboardDateRange } from "@/hooks/useDashboardDateRange";
 import { SOCKET_URL } from "@/lib/api";
 import { clearDashboardSession } from "@/lib/auth-storage";
+import { getDashboardSocketOptions } from "@/lib/socket";
 import { canAccessMenu } from "@/lib/dashboard-permissions";
 import { getAdminNotifications, logoutDashboard } from "@/lib/admin-api";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, CalendarDays, ChevronDown, FileText, LogOut } from "lucide-react";
+import { Bell, CalendarDays, ChevronDown, Database, FileText, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 
@@ -30,6 +31,7 @@ export function Topbar() {
   const firstName = (user?.name || user?.email || "Admin").split(" ")[0];
   const canReadNotifications = canAccessMenu(user, "notifications");
   const canReadReports = canAccessMenu(user, "reports");
+  const canReadDataRequests = canAccessMenu(user, "data-requests");
   const notificationsQuery = useQuery({
     queryKey: ["admin-notifications-topbar", dateRange.queryKey],
     queryFn: () => getAdminNotifications(dateRange.query),
@@ -41,10 +43,7 @@ export function Topbar() {
   useEffect(() => {
     if (!canReadNotifications) return;
 
-    const socket = io(SOCKET_URL, {
-      query: user?._id ? { userId: user._id } : undefined,
-      transports: ["websocket"],
-    });
+    const socket = io(SOCKET_URL, getDashboardSocketOptions(user?._id));
     const refresh = () => {
       queryClient.invalidateQueries({ queryKey: ["admin-notifications"] });
       queryClient.invalidateQueries({ queryKey: ["admin-notifications-topbar"] });
@@ -82,6 +81,12 @@ export function Topbar() {
         <p>Here&apos;s what&apos;s happening with your business today.</p>
       </div>
       <div className="top-actions">
+        {canReadDataRequests ? (
+          <Link className="report-topbar-button" href="/data-requests">
+            <Database size={16} />
+            Data Requests
+          </Link>
+        ) : null}
         {canReadReports ? (
           <Link className="report-topbar-button" href="/issue-reports">
             <FileText size={16} />
@@ -136,3 +141,7 @@ export function Topbar() {
     </header>
   );
 }
+
+
+
+

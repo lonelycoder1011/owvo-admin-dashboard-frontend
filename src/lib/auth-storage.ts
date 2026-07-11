@@ -18,14 +18,24 @@ export type DashboardUser = {
   };
 };
 
-export function getStoredToken() {
+function browserSessionStorage() {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_KEY);
+  return window.sessionStorage;
+}
+
+function clearLegacyLocalSession() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+  window.localStorage.removeItem(USER_KEY);
+}
+
+export function getStoredToken() {
+  return browserSessionStorage()?.getItem(TOKEN_KEY) || null;
 }
 
 export function getStoredUser(): DashboardUser | null {
-  if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(USER_KEY);
+  const raw = browserSessionStorage()?.getItem(USER_KEY);
   if (!raw) return null;
 
   try {
@@ -44,25 +54,33 @@ export function storeDashboardSession({
   refreshToken?: string;
   user: DashboardUser;
 }) {
-  window.localStorage.setItem(TOKEN_KEY, accessToken);
+  const storage = browserSessionStorage();
+  if (!storage) return;
+
+  clearLegacyLocalSession();
+  storage.setItem(TOKEN_KEY, accessToken);
   if (refreshToken) {
-    window.localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+    storage.setItem(REFRESH_TOKEN_KEY, refreshToken);
   }
-  window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+  storage.setItem(USER_KEY, JSON.stringify(user));
   setAccessToken(accessToken);
   window.dispatchEvent(new Event("owvo-dashboard-session"));
 }
 
 export function clearDashboardSession() {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(TOKEN_KEY);
-  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
-  window.localStorage.removeItem(USER_KEY);
+  const storage = browserSessionStorage();
+  clearLegacyLocalSession();
+  storage?.removeItem(TOKEN_KEY);
+  storage?.removeItem(REFRESH_TOKEN_KEY);
+  storage?.removeItem(USER_KEY);
   setAccessToken(null);
-  window.dispatchEvent(new Event("owvo-dashboard-session"));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("owvo-dashboard-session"));
+  }
 }
 
 export function hydrateDashboardSession() {
+  clearLegacyLocalSession();
   const token = getStoredToken();
   setAccessToken(token);
   return {

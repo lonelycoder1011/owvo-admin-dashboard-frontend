@@ -9,6 +9,7 @@ export type DashboardMenuKey =
   | "payouts-payments"
   | "earnings"
   | "reports"
+  | "data-requests"
   | "staff-management"
   | "notifications"
   | "settings"
@@ -23,6 +24,7 @@ export const dashboardMenuOrder: Array<{ key: DashboardMenuKey; href: string }> 
   { key: "payouts-payments", href: "/payouts-payments" },
   { key: "earnings", href: "/earnings" },
   { key: "reports", href: "/reports" },
+  { key: "data-requests", href: "/data-requests" },
   { key: "staff-management", href: "/staff-management" },
   { key: "notifications", href: "/notifications" },
   { key: "settings", href: "/settings" },
@@ -39,6 +41,7 @@ const routeMenuMap: Record<string, DashboardMenuKey> = {
   "/earnings": "earnings",
   "/reports": "reports",
   "/issue-reports": "reports",
+  "/data-requests": "data-requests",
   "/staff-management": "staff-management",
   "/notifications": "notifications",
   "/settings": "settings",
@@ -74,3 +77,5 @@ export function getDefaultDashboardHref(user: DashboardUser | null | undefined) 
   const firstMenu = dashboardMenuOrder.find((item) => menus.includes(item.key));
   return firstMenu?.href || "/login";
 }
+
+

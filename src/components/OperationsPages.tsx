@@ -2,6 +2,7 @@
 
 import {
   ActivityLog,
+  AdminDataRequest,
   AdminNotification,
   AdminPayment,
   AdminPayout,
@@ -13,6 +14,7 @@ import {
   createStaffAccount,
   deleteStaffAccount,
   getActivityLogs,
+  getAdminDataRequests,
   getAdminEarnings,
   getAdminNotifications,
   getAdminPayments,
@@ -25,6 +27,7 @@ import {
   getStaffAccounts,
   getWashers,
   updateAdminMe,
+  updateAdminDataRequest,
   updateAdminReportStatus,
   updateAdminCatalogService,
   updateAdminProviderService,
@@ -36,6 +39,7 @@ import { SOCKET_URL } from "@/lib/api";
 import { useDashboardDateRange } from "@/hooks/useDashboardDateRange";
 import { useDashboardUser } from "@/hooks/useDashboardUser";
 import { hydrateDashboardSession, storeDashboardSession } from "@/lib/auth-storage";
+import { getDashboardSocketOptions } from "@/lib/socket";
 import { initials, money } from "@/lib/format";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
@@ -64,6 +68,7 @@ const menuOptions = [
   { key: "payouts-payments", label: "Payouts & Payments" },
   { key: "earnings", label: "Earnings" },
   { key: "reports", label: "Services & Pricing" },
+  { key: "data-requests", label: "Data Requests" },
   { key: "notifications", label: "Notifications" },
   { key: "system-logs", label: "System Logs" },
 ];
@@ -1022,10 +1027,7 @@ export function WashersPageContent() {
   const washers = washersQuery.data || [];
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, {
-      query: user?._id ? { userId: user._id } : undefined,
-      transports: ["websocket"],
-    });
+    const socket = io(SOCKET_URL, getDashboardSocketOptions(user?._id));
     const refreshWashers = () => queryClient.invalidateQueries({ queryKey: ["washers"] });
     socket.on("admin_booking_created", refreshWashers);
     socket.on("admin_booking_status_updated", refreshWashers);
@@ -1160,10 +1162,7 @@ export function EarningsPageContent() {
   const earnings = earningsQuery.data;
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, {
-      query: user?._id ? { userId: user._id } : undefined,
-      transports: ["websocket"],
-    });
+    const socket = io(SOCKET_URL, getDashboardSocketOptions(user?._id));
     const refresh = () => queryClient.invalidateQueries({ queryKey: ["admin-earnings"] });
     socket.on("admin_booking_status_updated", refresh);
     socket.on("admin_payout_updated", refresh);
@@ -1674,10 +1673,7 @@ export function ServicesPricingPageContent() {
   });
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, {
-      query: user?._id ? { userId: user._id } : undefined,
-      transports: ["websocket"],
-    });
+    const socket = io(SOCKET_URL, getDashboardSocketOptions(user?._id));
     const refreshServicesPricing = () => queryClient.invalidateQueries({ queryKey: ["admin-services-pricing"] });
 
     socket.on("admin_services_pricing_updated", refreshServicesPricing);
@@ -2046,6 +2042,167 @@ function StaffEditPanel({
   );
 }
 
+export function DataRequestsPageContent() {
+  const queryClient = useQueryClient();
+  const user = useDashboardUser();
+  const canReviewDataRequests = user?.role === "admin";
+  const dateRange = useDashboardDateRange();
+  const [status, setStatus] = useState("all");
+  const [selected, setSelected] = useState<AdminDataRequest | null>(null);
+  const [adminNote, setAdminNote] = useState("");
+  const requestsQuery = useQuery({
+    queryKey: ["admin-data-requests", status, dateRange.queryKey],
+    queryFn: () => getAdminDataRequests(status, dateRange.query),
+  });
+  const updateMutation = useMutation({
+    mutationFn: ({
+      requestId,
+      nextStatus,
+      note,
+    }: {
+      requestId: string;
+      nextStatus: "approved" | "rejected";
+      note?: string;
+    }) => updateAdminDataRequest(requestId, { status: nextStatus, adminNote: note }),
+    onSuccess: (request) => {
+      setSelected(request);
+      setAdminNote(request.adminNote || "");
+      queryClient.invalidateQueries({ queryKey: ["admin-data-requests"] });
+    },
+  });
+  const requests = requestsQuery.data || [];
+  const exportText = selected?.exportData
+    ? JSON.stringify(selected.exportData, null, 2)
+    : "Approved data exports will appear here for the requester inside the app.";
+  const mutationError = updateMutation.error ? getApiErrorMessage(updateMutation.error) : "";
+
+  useEffect(() => {
+    setAdminNote(selected?.adminNote || "");
+  }, [selected?._id, selected?.adminNote]);
+
+  const reviewRequest = (nextStatus: "approved" | "rejected") => {
+    if (!selected) return;
+    updateMutation.mutate({
+      requestId: selected._id,
+      nextStatus,
+      note: adminNote,
+    });
+  };
+
+  return (
+    <section className="data-page">
+      <div className="data-page-header">
+        <div>
+          <h1>Data Requests</h1>
+          <p>Subject access requests from customers and providers, with approval-controlled exports.</p>
+        </div>
+        <div className="filter-pills">
+          {["all", "pending", "approved", "rejected"].map((item) => (
+            <button
+              className={status === item ? "filter-pill active" : "filter-pill"}
+              key={item}
+              onClick={() => setStatus(item)}
+              type="button"
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="data-layout">
+        <TableShell>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Request</th>
+                <th>Requester</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Open</th>
+              </tr>
+            </thead>
+            <tbody>
+              {requests.map((request) => (
+                <tr key={request._id}>
+                  <td>
+                    <strong>#{request._id.slice(-6).toUpperCase()}</strong>
+                    <span>{relativeDate(request.createdAt)}</span>
+                  </td>
+                  <td>{request.user?.name || request.user?.email || "Deleted account"}</td>
+                  <td>{request.requesterRole === "provider" ? "Provider" : "Customer"}</td>
+                  <td>
+                    <span className={`table-status ${request.status}`}>{statusText[request.status] || request.status}</span>
+                  </td>
+                  <td>
+                    <button className="table-action" onClick={() => setSelected(request)} type="button">
+                      View
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {!requests.length ? (
+                <tr>
+                  <td colSpan={5}>No data requests found.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </TableShell>
+
+        <aside className="detail-panel">
+          {selected ? (
+            <>
+              <h2>Request #{selected._id.slice(-6).toUpperCase()}</h2>
+              <p>
+                {selected.user?.name || selected.user?.email || "Deleted account"} requested a copy of their OWVO data {relativeDate(selected.createdAt)}.
+              </p>
+              <div className="detail-list">
+                <span>Status: {selected.status}</span>
+                <span>Role: {selected.requesterRole === "provider" ? "Provider" : "Customer"}</span>
+                <span>Reviewed: {selected.reviewedAt ? relativeDate(selected.reviewedAt) : "Not reviewed"}</span>
+              </div>
+              <label className="form-field">
+                Admin note
+                <textarea
+                  onChange={(event) => setAdminNote(event.target.value)}
+                  placeholder="Optional note for the request record"
+                  rows={3}
+                  value={adminNote}
+                />
+              </label>
+              {mutationError ? <p className="form-error">{mutationError}</p> : null}
+              <div className="modal-actions">
+                <button
+                  className="secondary-button"
+                  disabled={!canReviewDataRequests || updateMutation.isPending}
+                  onClick={() => reviewRequest("rejected")}
+                  type="button"
+                >
+                  Reject
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={!canReviewDataRequests || updateMutation.isPending}
+                  onClick={() => reviewRequest("approved")}
+                  type="button"
+                >
+                  {updateMutation.isPending ? <Loader2 className="spin" size={16} /> : null}
+                  Approve
+                </button>
+              </div>
+              {!canReviewDataRequests ? <p>Only admins can approve or reject data requests.</p> : null}
+              <h2>Approved Export</h2>
+              <pre className="data-request-export">{exportText}</pre>
+            </>
+          ) : (
+            <p>Select a data request to approve, reject, or inspect its generated export.</p>
+          )}
+        </aside>
+      </div>
+    </section>
+  );
+}
 export function StaffManagementPageContent() {
   const queryClient = useQueryClient();
   const dateRange = useDashboardDateRange();
@@ -2207,10 +2364,7 @@ export function NotificationsPageContent() {
   });
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, {
-      query: user?._id ? { userId: user._id } : undefined,
-      transports: ["websocket"],
-    });
+    const socket = io(SOCKET_URL, getDashboardSocketOptions(user?._id));
     const refresh = () => queryClient.invalidateQueries({ queryKey: ["admin-notifications"] });
     socket.on("admin_activity_log_created", refresh);
     socket.on("admin_booking_created", refresh);
@@ -2374,10 +2528,7 @@ export function SystemLogsPageContent() {
   const logs = logsQuery.data || [];
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, {
-      query: user?._id ? { userId: user._id } : undefined,
-      transports: ["websocket"],
-    });
+    const socket = io(SOCKET_URL, getDashboardSocketOptions(user?._id));
     const refresh = () => queryClient.invalidateQueries({ queryKey: ["activity-logs"] });
     socket.on("admin_activity_log_created", refresh);
     return () => {
@@ -2447,3 +2598,7 @@ export function SystemLogsPageContent() {
     </section>
   );
 }
+
+
+
+

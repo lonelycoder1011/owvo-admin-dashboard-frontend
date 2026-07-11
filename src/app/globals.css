@@ -1712,6 +1712,78 @@ a {
   margin: 0 0 14px;
 }
 
+.data-request-export {
+  background: #0b1420;
+  border-radius: 8px;
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.55;
+  max-height: 360px;
+  overflow: auto;
+  padding: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.detail-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.detail-list span {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 750;
+  padding: 9px 10px;
+}
+
+.form-field {
+  color: #344054;
+  display: grid;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.form-field textarea {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: #0b1420;
+  font: inherit;
+  line-height: 1.5;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin: 0 0 18px;
+}
+
+.secondary-button {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  color: #344054;
+  font-weight: 900;
+  padding: 0 16px;
+}
+
+.modal-actions .primary-button,
+.modal-actions .secondary-button {
+  width: auto;
+  min-width: 112px;
+}
+
 .detail-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1997,4 +2069,53 @@ a {
   .permission-grid {
     grid-template-columns: 1fr;
   }
+}
+
+
+.public-policy-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #f5f7fb;
+  padding: 32px 18px;
+}
+
+.public-policy-panel {
+  width: min(680px, 100%);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  color: #0b1420;
+  padding: 28px;
+}
+
+.public-policy-panel h1 {
+  font-size: 30px;
+  margin: 18px 0 12px;
+}
+
+.public-policy-panel p,
+.public-policy-panel li {
+  color: #344054;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.public-policy-panel a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  border-radius: 7px;
+  background: var(--owvo-yellow);
+  color: #0b1420;
+  font-weight: 900;
+  padding: 0 16px;
+  text-decoration: none;
+}
+
+.public-policy-footnote {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 16px;
 }

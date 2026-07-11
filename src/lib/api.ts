@@ -31,8 +31,11 @@ api.interceptors.response.use(
   (error) => {
     if (typeof window !== "undefined" && error?.response?.status === 401) {
       window.localStorage.removeItem(TOKEN_KEY);
+      window.sessionStorage.removeItem(TOKEN_KEY);
       window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+      window.sessionStorage.removeItem(REFRESH_TOKEN_KEY);
       window.localStorage.removeItem(USER_KEY);
+      window.sessionStorage.removeItem(USER_KEY);
       setAccessToken(null);
 
       if (window.location.pathname !== "/login") {
@@ -43,3 +46,4 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+

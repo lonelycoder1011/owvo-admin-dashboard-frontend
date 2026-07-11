@@ -14,6 +14,7 @@ import {
   BookOpenCheck,
   CalendarCheck,
   ChevronRight,
+  Database,
   Gauge,
   Landmark,
   Settings,
@@ -38,6 +39,7 @@ const navItems: Array<{
   { key: "payouts-payments", label: "Payouts & Payments", href: "/payouts-payments", icon: WalletCards },
   { key: "earnings", label: "Earnings", href: "/earnings", icon: Landmark },
   { key: "reports", label: "Services & Pricing", href: "/reports", icon: BadgePoundSterling },
+  { key: "data-requests", label: "Data Requests", href: "/data-requests", icon: Database },
   { key: "staff-management", label: "Staff Management", href: "/staff-management", icon: UsersRound },
   { key: "notifications", label: "Notifications", href: "/notifications", icon: Bell },
   { key: "settings", label: "Settings", href: "/settings", icon: Settings },
@@ -92,3 +94,4 @@ export function Sidebar() {
     </aside>
   );
 }
+
