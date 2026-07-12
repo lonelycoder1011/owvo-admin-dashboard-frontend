@@ -294,12 +294,31 @@ function isExportRecord(value: unknown): value is ExportRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function asExportRecord(value: unknown): ExportRecord | null {
+  return isExportRecord(value) ? value : null;
+}
+
 function getExportList(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
+function isMongoObjectId(value: string) {
+  return /^[a-fA-F0-9]{24}$/.test(value.trim());
+}
+
 function formatExportLabel(key: string) {
-  if (key === "_id") return "ID";
+  const overrides: Record<string, string> = {
+    preferredServices: "Offered Services",
+    customerRatingAverage: "Average Rating",
+    customerRatingCount: "Total Rating Count",
+    userId: "Customer",
+    providerId: "Provider",
+    bookingId: "Booking",
+    reviewedBy: "Reviewed By",
+    updatedBy: "Updated By",
+  };
+
+  if (overrides[key]) return overrides[key];
 
   return key
     .replace(/_/g, " ")
@@ -324,12 +343,13 @@ function isMoneyExportKey(key: string) {
 }
 
 function formatExportValue(key: string, value: unknown): string {
+  if ((key === "reviewedBy" || key === "updatedBy") && value) return "Admin";
   if (value === null || value === undefined || value === "") return "Not provided";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") return isMoneyExportKey(key) ? moneyWithCurrency(value) : value.toLocaleString("en-GB");
   if (typeof value === "string") {
     const trimmed = value.trim();
-    if (!trimmed) return "Not provided";
+    if (!trimmed || isMongoObjectId(trimmed)) return "Not provided";
     const parsed = new Date(trimmed);
     if (!Number.isNaN(parsed.getTime()) && (/^\d{4}-\d{2}-\d{2}/.test(trimmed) || trimmed.includes("T"))) {
       return formatPdfDate(trimmed);
@@ -341,21 +361,100 @@ function formatExportValue(key: string, value: unknown): string {
   return String(value);
 }
 
-function summarizeExportRecord(record: ExportRecord) {
-  const preferredKeys = ["name", "title", "email", "status", "serviceType", "addressLine", "registrationNo", "transactionId", "_id"];
+function summarizeVehicle(value: unknown) {
+  const record = asExportRecord(value);
+  if (!record) return "Not provided";
 
-  for (const key of preferredKeys) {
-    const value = record[key];
-    if (value !== null && value !== undefined && String(value).trim()) {
-      return formatExportValue(key, value);
-    }
+  const parts = [
+    formatExportValue("registrationNo", record.registrationNo),
+    formatExportValue("make", record.make),
+    formatExportValue("model", record.model),
+    formatExportValue("size", record.size),
+  ].filter((part) => part !== "Not provided");
+
+  return parts.length ? parts.join(" ") : "Not provided";
+}
+
+function summarizeService(value: unknown) {
+  const record = asExportRecord(value);
+  if (!record) return "Not provided";
+
+  const title = formatExportValue("title", record.title);
+  if (title !== "Not provided") return title;
+
+  const type = formatExportValue("serviceType", record.serviceType);
+  const size = formatExportValue("carSize", record.carSize);
+  if (type !== "Not provided" && size !== "Not provided") return `${type} - ${size}`;
+  if (type !== "Not provided") return type;
+
+  return "Not provided";
+}
+
+function summarizePerson(value: unknown) {
+  const record = asExportRecord(value);
+  if (!record) return "Not provided";
+
+  for (const key of ["name", "fullName", "email"]) {
+    const formatted = formatExportValue(key, record[key]);
+    if (formatted !== "Not provided") return formatted;
   }
 
-  return `${Object.keys(record).length} fields`;
+  return "Not provided";
+}
+
+function summarizeExportRecord(record: ExportRecord) {
+  const vehicle = summarizeVehicle(record);
+  if (vehicle !== "Not provided") return vehicle;
+
+  const service = summarizeService(record);
+  if (service !== "Not provided") return service;
+
+  const person = summarizePerson(record);
+  if (person !== "Not provided") return person;
+
+  for (const key of ["status", "serviceType", "addressLine", "transactionId"]) {
+    const value = record[key];
+    const formatted = formatExportValue(key, value);
+    if (formatted !== "Not provided") return formatted;
+  }
+
+  return "Not provided";
+}
+
+function shouldSkipExportKey(key: string) {
+  return key === "__v" || key === "_id" || key === "availability";
 }
 
 function getExportEntries(record: ExportRecord) {
-  return Object.entries(record).filter(([key]) => key !== "__v");
+  return Object.entries(record).filter(([key]) => !shouldSkipExportKey(key));
+}
+
+function renderWashHistoryNode(value: unknown): React.ReactNode {
+  const rows = getExportList(value).filter(isExportRecord);
+  if (!rows.length) return <span className="export-empty-value">No wash history found.</span>;
+
+  return (
+    <div className="export-record-list">
+      {rows.map((item, index) => {
+        const booking = asExportRecord(item.booking) || {};
+        const service = summarizeService(booking.service);
+        const customer = summarizePerson(booking.user);
+        const vehicle = summarizeVehicle(booking.vehicle || booking.vehicleSnapshot);
+        const completedAt = formatExportValue("completedAt", item.completedAt || booking.completedAt || booking.bookingDate);
+        const cost = formatExportValue("finalPrice", booking.finalPrice || booking.price);
+
+        return (
+          <article className="export-wash-card" key={`${index}-${completedAt}-${service}`}>
+            <strong>{service}</strong>
+            <span className="export-wash-row"><b>Customer</b>{customer}</span>
+            <span className="export-wash-row"><b>Vehicle</b>{vehicle}</span>
+            <span className="export-wash-row"><b>Completed</b>{completedAt}</span>
+            <span className="export-wash-row"><b>Cost</b>{cost}</span>
+          </article>
+        );
+      })}
+    </div>
+  );
 }
 
 function renderExportNode(value: unknown, depth = 0): React.ReactNode {
@@ -365,12 +464,15 @@ function renderExportNode(value: unknown, depth = 0): React.ReactNode {
 
     return (
       <div className="export-record-list">
-        {value.map((item, index) => (
-          <article className="export-record-card" key={`${index}-${summarizeExportRecord(isExportRecord(item) ? item : { value: item })}`}>
-            <strong>{isExportRecord(item) ? summarizeExportRecord(item) : `Record ${index + 1}`}</strong>
-            {renderExportNode(item, depth + 1)}
-          </article>
-        ))}
+        {value.map((item, index) => {
+          const heading = isExportRecord(item) ? summarizeExportRecord(item) : `Record ${index + 1}`;
+          return (
+            <article className="export-record-card" key={`${index}-${heading}`}>
+              <strong>{heading}</strong>
+              {renderExportNode(item, depth + 1)}
+            </article>
+          );
+        })}
       </div>
     );
   }
@@ -383,11 +485,12 @@ function renderExportNode(value: unknown, depth = 0): React.ReactNode {
       <dl className="export-field-grid">
         {entries.map(([key, fieldValue]) => {
           const nested = Array.isArray(fieldValue) || isExportRecord(fieldValue);
+          const forceScalar = key === "reviewedBy" || key === "updatedBy";
 
           return (
-            <div className={nested && depth < 2 ? "export-field wide" : "export-field"} key={key}>
+            <div className={nested && depth < 2 && !forceScalar ? "export-field wide" : "export-field"} key={key}>
               <dt>{formatExportLabel(key)}</dt>
-              <dd>{nested && depth < 2 ? renderExportNode(fieldValue, depth + 1) : formatExportValue(key, fieldValue)}</dd>
+              <dd>{nested && depth < 2 && !forceScalar ? renderExportNode(fieldValue, depth + 1) : formatExportValue(key, fieldValue)}</dd>
             </div>
           );
         })}
@@ -434,17 +537,23 @@ function DataExportViewer({ data }: { data?: Record<string, unknown> | null }) {
         ))}
       </div>
       <div className="data-export-sections">
-        {exportSectionOptions.map((section) => (
-          <details className="data-export-section" key={section.key} open={section.key === "profile"}>
-            <summary>
-              <span>{section.label}</span>
-              <small>
-                {Array.isArray(data[section.key]) ? `${getExportList(data[section.key]).length} records` : "Available"}
-              </small>
-            </summary>
-            {renderExportNode(data[section.key])}
-          </details>
-        ))}
+        {exportSectionOptions.map((section) => {
+          const sectionValue = data[section.key];
+          const count = getExportList(sectionValue).length;
+          const hasRecord = isExportRecord(sectionValue) && getExportEntries(sectionValue).length > 0;
+
+          return (
+            <details className="data-export-section" key={section.key} open={section.key === "profile"}>
+              <summary>
+                <span>{section.label}</span>
+                <small>
+                  {Array.isArray(sectionValue) ? `${count} records` : hasRecord ? "Available" : "No records"}
+                </small>
+              </summary>
+              {section.key === "washHistory" ? renderWashHistoryNode(sectionValue) : renderExportNode(sectionValue)}
+            </details>
+          );
+        })}
       </div>
     </div>
   );
