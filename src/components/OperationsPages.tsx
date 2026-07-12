@@ -267,6 +267,188 @@ function formatPdfMoneyValue(value?: number, currency = "GBP") {
   return `${currency} ${value.toFixed(2)}`;
 }
 
+type ExportRecord = Record<string, unknown>;
+
+const dataRequestFilterOptions = [
+  { value: "all", label: "All" },
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+];
+
+const exportSectionOptions = [
+  { key: "profile", label: "Profile" },
+  { key: "vehicles", label: "Vehicles" },
+  { key: "bookings", label: "Bookings" },
+  { key: "payments", label: "Payments" },
+  { key: "reports", label: "Reports" },
+  { key: "chatMessages", label: "Messages" },
+  { key: "providerRatings", label: "Provider Ratings" },
+  { key: "customerRatings", label: "Customer Ratings" },
+  { key: "receipts", label: "Receipts" },
+  { key: "washHistory", label: "Wash History" },
+  { key: "activityLogs", label: "Activity Logs" },
+];
+
+function isExportRecord(value: unknown): value is ExportRecord {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function getExportList(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+
+function formatExportLabel(key: string) {
+  if (key === "_id") return "ID";
+
+  return key
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (lower === "id") return "ID";
+      if (lower === "url") return "URL";
+      return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+    })
+    .join(" ");
+}
+
+function isMoneyExportKey(key: string) {
+  const lower = key.toLowerCase();
+  return ["amount", "price", "balance", "paid", "payable", "commission", "discount", "tip"].some((part) =>
+    lower.includes(part)
+  );
+}
+
+function formatExportValue(key: string, value: unknown): string {
+  if (value === null || value === undefined || value === "") return "Not provided";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") return isMoneyExportKey(key) ? moneyWithCurrency(value) : value.toLocaleString("en-GB");
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "Not provided";
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime()) && (/^\d{4}-\d{2}-\d{2}/.test(trimmed) || trimmed.includes("T"))) {
+      return formatPdfDate(trimmed);
+    }
+    return trimmed;
+  }
+  if (Array.isArray(value)) return `${value.length} records`;
+  if (isExportRecord(value)) return summarizeExportRecord(value);
+  return String(value);
+}
+
+function summarizeExportRecord(record: ExportRecord) {
+  const preferredKeys = ["name", "title", "email", "status", "serviceType", "addressLine", "registrationNo", "transactionId", "_id"];
+
+  for (const key of preferredKeys) {
+    const value = record[key];
+    if (value !== null && value !== undefined && String(value).trim()) {
+      return formatExportValue(key, value);
+    }
+  }
+
+  return `${Object.keys(record).length} fields`;
+}
+
+function getExportEntries(record: ExportRecord) {
+  return Object.entries(record).filter(([key]) => key !== "__v");
+}
+
+function renderExportNode(value: unknown, depth = 0): React.ReactNode {
+  if (Array.isArray(value)) {
+    if (!value.length) return <span className="export-empty-value">No records found.</span>;
+    if (depth > 1) return <span>{value.length} records</span>;
+
+    return (
+      <div className="export-record-list">
+        {value.map((item, index) => (
+          <article className="export-record-card" key={`${index}-${summarizeExportRecord(isExportRecord(item) ? item : { value: item })}`}>
+            <strong>{isExportRecord(item) ? summarizeExportRecord(item) : `Record ${index + 1}`}</strong>
+            {renderExportNode(item, depth + 1)}
+          </article>
+        ))}
+      </div>
+    );
+  }
+
+  if (isExportRecord(value)) {
+    const entries = getExportEntries(value);
+    if (!entries.length) return <span className="export-empty-value">No information available.</span>;
+
+    return (
+      <dl className="export-field-grid">
+        {entries.map(([key, fieldValue]) => {
+          const nested = Array.isArray(fieldValue) || isExportRecord(fieldValue);
+
+          return (
+            <div className={nested && depth < 2 ? "export-field wide" : "export-field"} key={key}>
+              <dt>{formatExportLabel(key)}</dt>
+              <dd>{nested && depth < 2 ? renderExportNode(fieldValue, depth + 1) : formatExportValue(key, fieldValue)}</dd>
+            </div>
+          );
+        })}
+      </dl>
+    );
+  }
+
+  return <span>{formatExportValue("value", value)}</span>;
+}
+
+function DataExportViewer({ data }: { data?: Record<string, unknown> | null }) {
+  if (!data) {
+    return (
+      <div className="data-export-empty">
+        Approved data exports will appear here for the requester inside the app.
+      </div>
+    );
+  }
+
+  const summary = [
+    { label: "Vehicles", value: getExportList(data.vehicles).length },
+    { label: "Bookings", value: getExportList(data.bookings).length },
+    { label: "Payments", value: getExportList(data.payments).length },
+    { label: "Reports", value: getExportList(data.reports).length },
+  ];
+
+  return (
+    <div className="data-export-viewer">
+      <div className="data-export-heading">
+        <div>
+          <h3>Approved Export</h3>
+          <p>Generated {formatExportValue("generatedAt", data.generatedAt)}</p>
+        </div>
+      </div>
+      {typeof data.retentionPolicy === "string" && data.retentionPolicy.trim() ? (
+        <p className="data-export-policy">{data.retentionPolicy}</p>
+      ) : null}
+      <div className="data-export-summary">
+        {summary.map((item) => (
+          <span key={item.label}>
+            <strong>{item.value}</strong>
+            {item.label}
+          </span>
+        ))}
+      </div>
+      <div className="data-export-sections">
+        {exportSectionOptions.map((section) => (
+          <details className="data-export-section" key={section.key} open={section.key === "profile"}>
+            <summary>
+              <span>{section.label}</span>
+              <small>
+                {Array.isArray(data[section.key]) ? `${getExportList(data[section.key]).length} records` : "Available"}
+              </small>
+            </summary>
+            {renderExportNode(data[section.key])}
+          </details>
+        ))}
+      </div>
+    </div>
+  );
+}
 function wrapPdfLines(value: unknown, maxChars: number) {
   const words = safePdfText(value)
     .split(" ")
@@ -2071,9 +2253,6 @@ export function DataRequestsPageContent() {
     },
   });
   const requests = requestsQuery.data || [];
-  const exportText = selected?.exportData
-    ? JSON.stringify(selected.exportData, null, 2)
-    : "Approved data exports will appear here for the requester inside the app.";
   const mutationError = updateMutation.error ? getApiErrorMessage(updateMutation.error) : "";
 
   useEffect(() => {
@@ -2097,14 +2276,14 @@ export function DataRequestsPageContent() {
           <p>Subject access requests from customers and providers, with approval-controlled exports.</p>
         </div>
         <div className="filter-pills">
-          {["all", "pending", "approved", "rejected"].map((item) => (
+          {dataRequestFilterOptions.map((item) => (
             <button
-              className={status === item ? "filter-pill active" : "filter-pill"}
-              key={item}
-              onClick={() => setStatus(item)}
+              className={status === item.value ? "filter-pill active" : "filter-pill"}
+              key={item.value}
+              onClick={() => setStatus(item.value)}
               type="button"
             >
-              {item}
+              {item.label}
             </button>
           ))}
         </div>
@@ -2112,7 +2291,7 @@ export function DataRequestsPageContent() {
 
       <div className="data-layout">
         <TableShell>
-          <table className="data-table">
+          <table className="admin-table data-request-table">
             <thead>
               <tr>
                 <th>Request</th>
@@ -2125,11 +2304,13 @@ export function DataRequestsPageContent() {
             <tbody>
               {requests.map((request) => (
                 <tr key={request._id}>
-                  <td>
+                  <td className="request-cell">
                     <strong>#{request._id.slice(-6).toUpperCase()}</strong>
                     <span>{relativeDate(request.createdAt)}</span>
                   </td>
-                  <td>{request.user?.name || request.user?.email || "Deleted account"}</td>
+                  <td>
+                    <AvatarName user={request.user} fallback={request.requesterRole === "provider" ? "Provider" : "Customer"} />
+                  </td>
                   <td>{request.requesterRole === "provider" ? "Provider" : "Customer"}</td>
                   <td>
                     <span className={`table-status ${request.status}`}>{statusText[request.status] || request.status}</span>
@@ -2150,7 +2331,7 @@ export function DataRequestsPageContent() {
           </table>
         </TableShell>
 
-        <aside className="detail-panel">
+        <aside className="detail-panel data-request-detail-panel">
           {selected ? (
             <>
               <h2>Request #{selected._id.slice(-6).toUpperCase()}</h2>
@@ -2158,7 +2339,7 @@ export function DataRequestsPageContent() {
                 {selected.user?.name || selected.user?.email || "Deleted account"} requested a copy of their OWVO data {relativeDate(selected.createdAt)}.
               </p>
               <div className="detail-list">
-                <span>Status: {selected.status}</span>
+                <span>Status: {statusText[selected.status] || selected.status}</span>
                 <span>Role: {selected.requesterRole === "provider" ? "Provider" : "Customer"}</span>
                 <span>Reviewed: {selected.reviewedAt ? relativeDate(selected.reviewedAt) : "Not reviewed"}</span>
               </div>
@@ -2192,8 +2373,7 @@ export function DataRequestsPageContent() {
                 </button>
               </div>
               {!canReviewDataRequests ? <p>Only admins can approve or reject data requests.</p> : null}
-              <h2>Approved Export</h2>
-              <pre className="data-request-export">{exportText}</pre>
+              <DataExportViewer data={selected.exportData} />
             </>
           ) : (
             <p>Select a data request to approve, reject, or inspect its generated export.</p>
