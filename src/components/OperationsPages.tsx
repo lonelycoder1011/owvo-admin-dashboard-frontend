@@ -46,15 +46,24 @@ import { formatDistanceToNow } from "date-fns";
 import {
   Bell,
   BadgePoundSterling,
+  CalendarDays,
+  CarFront,
+  ChevronDown,
+  CreditCard,
   Download,
   Eye,
   EyeOff,
   FileText,
   Loader2,
+  MessageSquareText,
+  ReceiptText,
   Save,
   ShieldCheck,
   SlidersHorizontal,
+  Star,
   Trash2,
+  TriangleAlert,
+  UserRound,
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { io } from "socket.io-client";
@@ -277,17 +286,15 @@ const dataRequestFilterOptions = [
 ];
 
 const exportSectionOptions = [
-  { key: "profile", label: "Profile" },
-  { key: "vehicles", label: "Vehicles" },
-  { key: "bookings", label: "Bookings" },
-  { key: "payments", label: "Payments" },
-  { key: "reports", label: "Reports" },
-  { key: "chatMessages", label: "Messages" },
-  { key: "providerRatings", label: "Provider Ratings" },
-  { key: "customerRatings", label: "Customer Ratings" },
-  { key: "receipts", label: "Receipts" },
-  { key: "washHistory", label: "Wash History" },
-  { key: "activityLogs", label: "Activity Logs" },
+  { key: "profile", label: "Profile", icon: UserRound },
+  { key: "vehicles", label: "Vehicles", icon: CarFront },
+  { key: "bookings", label: "Bookings", icon: CalendarDays },
+  { key: "payments", label: "Payments", icon: CreditCard },
+  { key: "reports", label: "Reports", icon: TriangleAlert },
+  { key: "chatMessages", label: "Messages", icon: MessageSquareText },
+  { key: "providerRatings", label: "Provider Ratings", icon: Star },
+  { key: "customerRatings", label: "Customer Ratings", icon: Star },
+  { key: "receipts", label: "Receipts", icon: ReceiptText },
 ];
 
 function isExportRecord(value: unknown): value is ExportRecord {
@@ -314,8 +321,20 @@ function formatExportLabel(key: string) {
     userId: "Customer",
     providerId: "Provider",
     bookingId: "Booking",
+    booking: "Booking",
+    user: "User",
+    provider: "Provider",
+    customer: "Customer",
+    reporter: "Reporter",
+    reportedUser: "Reported User",
+    sender: "Sender",
+    recipient: "Recipient",
+    participants: "Participants",
+    assignedTo: "Assigned To",
     reviewedBy: "Reviewed By",
     updatedBy: "Updated By",
+    service: "Service",
+    vehicle: "Vehicle",
   };
 
   if (overrides[key]) return overrides[key];
@@ -347,6 +366,13 @@ function formatExportValue(key: string, value: unknown): string {
   if (value === null || value === undefined || value === "") return "Not provided";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") return isMoneyExportKey(key) ? moneyWithCurrency(value) : value.toLocaleString("en-GB");
+  if (Array.isArray(value)) {
+    if (isScalarSummaryKey(key)) {
+      const values = value.map((item) => formatExportValue("value", item)).filter((item) => item !== "Not provided");
+      return values.length ? values.join(", ") : "Not provided";
+    }
+    return `${value.length} records`;
+  }
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (!trimmed || isMongoObjectId(trimmed)) return "Not provided";
@@ -356,7 +382,6 @@ function formatExportValue(key: string, value: unknown): string {
     }
     return trimmed;
   }
-  if (Array.isArray(value)) return `${value.length} records`;
   if (isExportRecord(value)) return summarizeExportRecord(value);
   return String(value);
 }
@@ -402,7 +427,19 @@ function summarizePerson(value: unknown) {
   return "Not provided";
 }
 
-function summarizeExportRecord(record: ExportRecord) {
+function summarizeExportRecord(record: ExportRecord): string {
+  const nestedBooking = asExportRecord(record.booking || record.bookingId);
+  if (nestedBooking) {
+    const bookingSummary = summarizeExportRecord(nestedBooking);
+    if (bookingSummary !== "Not provided") return bookingSummary;
+  }
+
+  const nestedService = asExportRecord(record.service);
+  if (nestedService) {
+    const service = summarizeService(nestedService);
+    if (service !== "Not provided") return service;
+  }
+
   const vehicle = summarizeVehicle(record);
   if (vehicle !== "Not provided") return vehicle;
 
@@ -412,7 +449,7 @@ function summarizeExportRecord(record: ExportRecord) {
   const person = summarizePerson(record);
   if (person !== "Not provided") return person;
 
-  for (const key of ["status", "serviceType", "addressLine", "transactionId"]) {
+  for (const key of ["status", "serviceType", "addressLine", "transactionId", "description", "review", "text"]) {
     const value = record[key];
     const formatted = formatExportValue(key, value);
     if (formatted !== "Not provided") return formatted;
@@ -425,36 +462,30 @@ function shouldSkipExportKey(key: string) {
   return key === "__v" || key === "_id" || key === "availability";
 }
 
-function getExportEntries(record: ExportRecord) {
-  return Object.entries(record).filter(([key]) => !shouldSkipExportKey(key));
+function isScalarSummaryKey(key: string) {
+  return [
+    "reviewedBy",
+    "updatedBy",
+    "booking",
+    "bookingId",
+    "user",
+    "userId",
+    "provider",
+    "providerId",
+    "customer",
+    "reporter",
+    "reportedUser",
+    "sender",
+    "recipient",
+    "participants",
+    "assignedTo",
+    "service",
+    "vehicle",
+  ].includes(key);
 }
 
-function renderWashHistoryNode(value: unknown): React.ReactNode {
-  const rows = getExportList(value).filter(isExportRecord);
-  if (!rows.length) return <span className="export-empty-value">No wash history found.</span>;
-
-  return (
-    <div className="export-record-list">
-      {rows.map((item, index) => {
-        const booking = asExportRecord(item.booking) || {};
-        const service = summarizeService(booking.service);
-        const customer = summarizePerson(booking.user);
-        const vehicle = summarizeVehicle(booking.vehicle || booking.vehicleSnapshot);
-        const completedAt = formatExportValue("completedAt", item.completedAt || booking.completedAt || booking.bookingDate);
-        const cost = formatExportValue("finalPrice", booking.finalPrice || booking.price);
-
-        return (
-          <article className="export-wash-card" key={`${index}-${completedAt}-${service}`}>
-            <strong>{service}</strong>
-            <span className="export-wash-row"><b>Customer</b>{customer}</span>
-            <span className="export-wash-row"><b>Vehicle</b>{vehicle}</span>
-            <span className="export-wash-row"><b>Completed</b>{completedAt}</span>
-            <span className="export-wash-row"><b>Cost</b>{cost}</span>
-          </article>
-        );
-      })}
-    </div>
-  );
+function getExportEntries(record: ExportRecord) {
+  return Object.entries(record).filter(([key]) => !shouldSkipExportKey(key));
 }
 
 function renderExportNode(value: unknown, depth = 0): React.ReactNode {
@@ -485,7 +516,7 @@ function renderExportNode(value: unknown, depth = 0): React.ReactNode {
       <dl className="export-field-grid">
         {entries.map(([key, fieldValue]) => {
           const nested = Array.isArray(fieldValue) || isExportRecord(fieldValue);
-          const forceScalar = key === "reviewedBy" || key === "updatedBy";
+          const forceScalar = isScalarSummaryKey(key);
 
           return (
             <div className={nested && depth < 2 && !forceScalar ? "export-field wide" : "export-field"} key={key}>
@@ -501,7 +532,13 @@ function renderExportNode(value: unknown, depth = 0): React.ReactNode {
   return <span>{formatExportValue("value", value)}</span>;
 }
 
-function DataExportViewer({ data }: { data?: Record<string, unknown> | null }) {
+function DataExportViewer({
+  data,
+  status,
+}: {
+  data?: Record<string, unknown> | null;
+  status: AdminDataRequest["status"];
+}) {
   if (!data) {
     return (
       <div className="data-export-empty">
@@ -511,17 +548,20 @@ function DataExportViewer({ data }: { data?: Record<string, unknown> | null }) {
   }
 
   const summary = [
-    { label: "Vehicles", value: getExportList(data.vehicles).length },
-    { label: "Bookings", value: getExportList(data.bookings).length },
-    { label: "Payments", value: getExportList(data.payments).length },
-    { label: "Reports", value: getExportList(data.reports).length },
+    { label: "Vehicles", value: getExportList(data.vehicles).length, icon: CarFront },
+    { label: "Bookings", value: getExportList(data.bookings).length, icon: CalendarDays },
+    { label: "Payments", value: getExportList(data.payments).length, icon: BadgePoundSterling },
+    { label: "Reports", value: getExportList(data.reports).length, icon: TriangleAlert },
   ];
 
   return (
     <div className="data-export-viewer">
       <div className="data-export-heading">
+        <span className="data-export-heading-icon" aria-hidden="true">
+          <ShieldCheck size={21} strokeWidth={2.2} />
+        </span>
         <div>
-          <h3>Approved Export</h3>
+          <h3>{status === "approved" ? "Approved Data Export" : "Requested Data Preview"}</h3>
           <p>Generated {formatExportValue("generatedAt", data.generatedAt)}</p>
         </div>
       </div>
@@ -529,28 +569,46 @@ function DataExportViewer({ data }: { data?: Record<string, unknown> | null }) {
         <p className="data-export-policy">{data.retentionPolicy}</p>
       ) : null}
       <div className="data-export-summary">
-        {summary.map((item) => (
-          <span key={item.label}>
-            <strong>{item.value}</strong>
-            {item.label}
-          </span>
-        ))}
+        {summary.map((item) => {
+          const SummaryIcon = item.icon;
+          return (
+            <div className="data-export-summary-item" key={item.label}>
+              <SummaryIcon aria-hidden="true" size={17} strokeWidth={2.1} />
+              <span>
+                <strong>{item.value}</strong>
+                {item.label}
+              </span>
+            </div>
+          );
+        })}
       </div>
       <div className="data-export-sections">
         {exportSectionOptions.map((section) => {
           const sectionValue = data[section.key];
           const count = getExportList(sectionValue).length;
           const hasRecord = isExportRecord(sectionValue) && getExportEntries(sectionValue).length > 0;
+          const SectionIcon = section.icon;
+          const sectionStatus = Array.isArray(sectionValue)
+            ? `${count} records`
+            : hasRecord
+              ? "Available"
+              : "No records";
 
           return (
             <details className="data-export-section" key={section.key} open={section.key === "profile"}>
               <summary>
-                <span>{section.label}</span>
-                <small>
-                  {Array.isArray(sectionValue) ? `${count} records` : hasRecord ? "Available" : "No records"}
-                </small>
+                <span className="data-export-section-heading">
+                  <span className="data-export-section-icon" aria-hidden="true">
+                    <SectionIcon size={18} strokeWidth={2.1} />
+                  </span>
+                  <span>
+                    <strong>{section.label}</strong>
+                    <small>{sectionStatus}</small>
+                  </span>
+                </span>
+                <ChevronDown className="data-export-chevron" aria-hidden="true" size={18} />
               </summary>
-              {section.key === "washHistory" ? renderWashHistoryNode(sectionValue) : renderExportNode(sectionValue)}
+              <div className="data-export-section-content">{renderExportNode(sectionValue)}</div>
             </details>
           );
         })}
@@ -1586,7 +1644,7 @@ export function PayoutsPaymentsPageContent() {
           <span>Stripe Available</span>
           <strong>{moneyWithCurrency(stripeBalance?.available, stripeCurrency)}</strong>
           <small>
-            Pending {moneyWithCurrency(stripeBalance?.pending, stripeCurrency)} ·{" "}
+            Pending {moneyWithCurrency(stripeBalance?.pending, stripeCurrency)} Ãƒâ€šÃ‚Â·{" "}
             {stripeBalance?.configured ? (stripeBalance?.liveMode ? "Live mode" : "Test mode") : "Not configured"}
           </small>
         </article>
@@ -2412,7 +2470,7 @@ export function DataRequestsPageContent() {
             </thead>
             <tbody>
               {requests.map((request) => (
-                <tr key={request._id}>
+                <tr className={selected?._id === request._id ? "is-selected" : undefined} key={request._id}>
                   <td className="request-cell">
                     <strong>#{request._id.slice(-6).toUpperCase()}</strong>
                     <span>{relativeDate(request.createdAt)}</span>
@@ -2425,7 +2483,12 @@ export function DataRequestsPageContent() {
                     <span className={`table-status ${request.status}`}>{statusText[request.status] || request.status}</span>
                   </td>
                   <td>
-                    <button className="table-action" onClick={() => setSelected(request)} type="button">
+                    <button
+                      aria-pressed={selected?._id === request._id}
+                      className="table-action"
+                      onClick={() => setSelected(request)}
+                      type="button"
+                    >
                       View
                     </button>
                   </td>
@@ -2452,6 +2515,7 @@ export function DataRequestsPageContent() {
                 <span>Role: {selected.requesterRole === "provider" ? "Provider" : "Customer"}</span>
                 <span>Reviewed: {selected.reviewedAt ? relativeDate(selected.reviewedAt) : "Not reviewed"}</span>
               </div>
+              <DataExportViewer data={selected.exportData} status={selected.status} />
               <label className="form-field">
                 Admin note
                 <textarea
@@ -2482,7 +2546,6 @@ export function DataRequestsPageContent() {
                 </button>
               </div>
               {!canReviewDataRequests ? <p>Only admins can approve or reject data requests.</p> : null}
-              <DataExportViewer data={selected.exportData} />
             </>
           ) : (
             <p>Select a data request to approve, reject, or inspect its generated export.</p>
