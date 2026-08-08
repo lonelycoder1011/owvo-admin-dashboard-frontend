@@ -539,6 +539,9 @@ function DataExportViewer({
   data?: Record<string, unknown> | null;
   status: AdminDataRequest["status"];
 }) {
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    profile: true,
+  });
   if (!data) {
     return (
       <div className="data-export-empty">
@@ -588,6 +591,7 @@ function DataExportViewer({
           const count = getExportList(sectionValue).length;
           const hasRecord = isExportRecord(sectionValue) && getExportEntries(sectionValue).length > 0;
           const SectionIcon = section.icon;
+          const isExpanded = Boolean(expandedSections[section.key]);
           const sectionStatus = Array.isArray(sectionValue)
             ? `${count} records`
             : hasRecord
@@ -595,8 +599,18 @@ function DataExportViewer({
               : "No records";
 
           return (
-            <details className="data-export-section" key={section.key} open={section.key === "profile"}>
-              <summary>
+            <section className={`data-export-section${isExpanded ? " is-open" : ""}`} key={section.key}>
+              <button
+                aria-expanded={isExpanded}
+                className="data-export-section-toggle"
+                onClick={() =>
+                  setExpandedSections((current) => ({
+                    ...current,
+                    [section.key]: !current[section.key],
+                  }))
+                }
+                type="button"
+              >
                 <span className="data-export-section-heading">
                   <span className="data-export-section-icon" aria-hidden="true">
                     <SectionIcon size={18} strokeWidth={2.1} />
@@ -607,9 +621,11 @@ function DataExportViewer({
                   </span>
                 </span>
                 <ChevronDown className="data-export-chevron" aria-hidden="true" size={18} />
-              </summary>
-              <div className="data-export-section-content">{renderExportNode(sectionValue)}</div>
-            </details>
+              </button>
+              {isExpanded ? (
+                <div className="data-export-section-content">{renderExportNode(sectionValue)}</div>
+              ) : null}
+            </section>
           );
         })}
       </div>
@@ -2515,7 +2531,7 @@ export function DataRequestsPageContent() {
                 <span>Role: {selected.requesterRole === "provider" ? "Provider" : "Customer"}</span>
                 <span>Reviewed: {selected.reviewedAt ? relativeDate(selected.reviewedAt) : "Not reviewed"}</span>
               </div>
-              <DataExportViewer data={selected.exportData} status={selected.status} />
+              <DataExportViewer key={selected._id} data={selected.exportData} status={selected.status} />
               <label className="form-field">
                 Admin note
                 <textarea
