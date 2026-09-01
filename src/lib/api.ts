@@ -4,18 +4,39 @@ const TOKEN_KEY = "owvo_dashboard_access_token";
 const REFRESH_TOKEN_KEY = "owvo_dashboard_refresh_token";
 const USER_KEY = "owvo_dashboard_user";
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  (process.env.NODE_ENV === "development"
-    ? "http://localhost:5006/api/v1"
-    : "https://owvo-backend.onrender.com/api/v1");
+const RETIRED_RENDER_ORIGIN = "https://owvo-backend.onrender.com";
+const CURRENT_RENDER_ORIGIN = "https://owvo-backend-new.onrender.com";
 
-export const SOCKET_URL =
-  process.env.NEXT_PUBLIC_SOCKET_URL ?? API_BASE_URL.replace(/\/api\/v1\/?$/, "");
+const normalizeBackendUrl = (value: string) => {
+  const normalizedValue = value.trim();
+  if (
+    normalizedValue === RETIRED_RENDER_ORIGIN ||
+    normalizedValue.startsWith(`${RETIRED_RENDER_ORIGIN}/`)
+  ) {
+    return `${CURRENT_RENDER_ORIGIN}${normalizedValue.slice(RETIRED_RENDER_ORIGIN.length)}`;
+  }
+  return normalizedValue;
+};
+
+const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+const configuredSocketUrl = process.env.NEXT_PUBLIC_SOCKET_URL?.trim();
+const defaultApiBaseUrl =
+  process.env.NODE_ENV === "development"
+    ? "http://localhost:5006/api/v1"
+    : `${CURRENT_RENDER_ORIGIN}/api/v1`;
+
+export const API_BASE_URL = normalizeBackendUrl(
+  configuredApiBaseUrl || defaultApiBaseUrl
+);
+
+export const SOCKET_URL = normalizeBackendUrl(
+  configuredSocketUrl || API_BASE_URL.replace(/\/api\/v1\/?$/, "")
+);
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000
+  // Render can take longer than 15 seconds to wake after an idle period.
+  timeout: 60000,
 });
 
 export function setAccessToken(token: string | null) {
